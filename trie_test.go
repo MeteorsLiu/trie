@@ -159,3 +159,12 @@ func TestTrie_RemoveWildcard(t *testing.T) {
 	tree.Remove("+.stun.*.*")
 	assert.Nil(t, tree.Search("global.stun.website.com"))
 }
+
+func TestTrie_Boundary(t *testing.T) {
+	tree := NewTrie[net.IP]()
+	tree.Insert("*.dev", localIP)
+
+	tree.Insert(".", localIP)
+	tree.Insert("..dev", localIP)
+	assert.Nil(t, tree.Search("dev"))
+}
