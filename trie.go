@@ -71,14 +71,16 @@ func (t *Trie[T]) Search(k string) *Node[T] {
 
 func (t *Trie[T]) Remove(k string) {
 	parts := strings.Split(k, ".")
+
+	t.Lock()
+	defer t.Unlock()
+
 	n := t.search(t.root, parts)
 
-	for i := 0; i < len(parts) && n != nil; i++ {
-		if n.IsLeaf() {
-			n.Remove(parts[i])
-			if n.parent != nil && len(n.children) < 2 {
-				n.parent.RemoveNode(n)
-			}
+	for i := 0; i < len(parts) && n != nil && n.IsLeaf(); i++ {
+		n.Remove(parts[i])
+		if n.parent != nil && len(n.children) < 2 {
+			n.parent.RemoveNode(n)
 		}
 		n = n.parent
 	}
