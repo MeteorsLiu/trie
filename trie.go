@@ -1,6 +1,7 @@
 package trie
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 )
@@ -58,29 +59,6 @@ func (t *Trie[T]) search(node *Node[T], parts []string) *Node[T] {
 	return nil
 }
 
-func (t *Trie[T]) searchPath(node *Node[T], path *[]*Node[T], parts []string) *Node[T] {
-	if len(parts) == 0 {
-		*path = append(*path, node)
-		return node
-	}
-
-	if c := node.Get(parts[len(parts)-1]); c != nil {
-		*path = append(*path, node)
-		if n := t.searchPath(c, path, parts[:len(parts)-1]); n != nil && n.IsLeaf() {
-			return n
-		}
-	}
-
-	if c := node.GetWildcard(); c != nil {
-		*path = append(*path, node)
-		if n := t.searchPath(c, path, parts[:len(parts)-1]); n != nil && n.IsLeaf() {
-			return n
-		}
-	}
-
-	return nil
-}
-
 func (t *Trie[T]) Search(k string) *Node[T] {
 	parts := strings.Split(k, ".")
 
@@ -92,21 +70,19 @@ func (t *Trie[T]) Search(k string) *Node[T] {
 }
 
 func (t *Trie[T]) Remove(k string) {
-	var path []*Node[T]
 	parts := strings.Split(k, ".")
+	n := t.search(t.root, parts)
 
-	t.Lock()
-	defer t.Unlock()
-	t.searchPath(t.root, &path, parts)
-	for i := len(path) - 1; i >= 0; i-- {
-		each := path[i]
-		if !each.IsLeaf() {
-			next := path[i+1]
-			if next.IsLeaf() {
-				each.RemoveNode(next)
+	for i := 0; i < len(parts) && n != nil; i++ {
+		if n.IsLeaf() {
+			n.Remove(parts[i])
+			if n.parent != nil && len(n.children) < 2 {
+				n.parent.RemoveNode(n)
 			}
 		}
+		n = n.parent
 	}
+
 }
 
 // 后序历遍
@@ -124,4 +100,34 @@ func (t *Trie[T]) walk(node *Node[T], depth int, f func(int, string, *Node[T])) 
 
 func (t *Trie[T]) Walk(f func(int, string, *Node[T])) {
 	t.walk(t.root, 0, f)
+}
+
+func (t *Trie[T]) print(n *Node[T], key string, space int) {
+	if n == nil {
+		return
+	}
+	space += 10
+
+	n.ForEach(func(s string, nc *Node[T]) {
+		t.print(nc, s, space)
+	})
+
+	for i := 0; i < space; i++ {
+		fmt.Print(" ")
+	}
+
+	if key == "" {
+		if n != t.root {
+			fmt.Printf("+: %v\n", n.Data)
+		} else {
+			fmt.Print("root\n")
+		}
+	} else {
+		fmt.Printf("%s: %v\n", key, n.Data)
+	}
+
+}
+
+func (t *Trie[T]) Print() {
+	t.print(t.root, "", 0)
 }

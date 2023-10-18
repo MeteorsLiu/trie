@@ -1,4 +1,4 @@
-module github.com/MeteorsLiu/trie.git
+module github.com/MeteorsLiu/trie
 
 go 1.21.0
 

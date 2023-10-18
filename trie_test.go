@@ -112,12 +112,14 @@ func TestTrie_RemoveWildcard(t *testing.T) {
 		"+.stun.*.*",
 		"+.stun.*.*.*",
 		"+.stun.*.*.*.*",
-		"stun.l.google.com",
+		"stun.google.*.*",
 	}
 
 	for _, domain := range domains {
 		tree.Insert(domain, localIP)
 	}
+
+	//tree.Print()
 
 	assert.NotNil(t, tree.Search("sub.example.com"))
 	assert.NotNil(t, tree.Search("sub.foo.example.com"))
@@ -145,9 +147,7 @@ func TestTrie_RemoveWildcard(t *testing.T) {
 	assert.Nil(t, tree.Search("test.apple.com"))
 
 	tree.Remove("+.foo.com")
-	tree.Walk(func(depth int, s string, n *Node[net.IP]) {
-		t.Log(depth, s)
-	})
+
 	assert.Nil(t, tree.Search("test.foo.com"))
 	assert.Nil(t, tree.Search("foo.com"))
 	t.Log("start del stun")
@@ -158,6 +158,7 @@ func TestTrie_RemoveWildcard(t *testing.T) {
 
 	tree.Remove("+.stun.*.*")
 	assert.Nil(t, tree.Search("global.stun.website.com"))
+	assert.NotNil(t, tree.Search("stun.google.baidu.com"))
 }
 
 func TestTrie_Boundary(t *testing.T) {
@@ -167,4 +168,29 @@ func TestTrie_Boundary(t *testing.T) {
 	tree.Insert(".", localIP)
 	tree.Insert("..dev", localIP)
 	assert.Nil(t, tree.Search("dev"))
+}
+
+func TestTrie_RemoveWildcard2(t *testing.T) {
+	tree := NewTrie[net.IP]()
+
+	domains := []string{
+		"+.stun.*.*",
+		"+.stun.*.*.*",
+		"+.stun.*.*.*.*",
+		"stun.l.google.com",
+	}
+
+	for _, domain := range domains {
+		tree.Insert(domain, localIP)
+	}
+
+	tree.Remove("+.stun.*.*.*.*")
+	assert.NotNil(t, tree.Search("global.stun.website.com"))
+
+	tree.Remove("+.stun.*.*.*")
+	assert.NotNil(t, tree.Search("global.stun.website.com"))
+	tree.Print()
+	tree.Remove("+.stun.*.*")
+	tree.Print()
+	assert.Nil(t, tree.Search("global.stun.website.com"))
 }
