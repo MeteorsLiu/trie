@@ -1,196 +1,436 @@
 package trie
 
 import (
-	"net"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
-var localIP = net.IP{127, 0, 0, 1}
+func TestTrieSubset(t *testing.T) {
+	testCases := []struct {
+		name     string
+		search   string
+		inserted []string
+		want     bool
+	}{
+		{
+			name:   "empty string",
+			search: "abc",
+			want:   false,
+		},
+		{
+			name:     "input empty string",
+			search:   "",
+			inserted: []string{""},
+			want:     false,
+		},
+		{
+			name:     "one string",
+			search:   "/a",
+			inserted: []string{"/a"},
+			want:     true,
+		},
+		{
+			name:     "two string",
+			search:   "/a",
+			inserted: []string{"/a", "/b"},
+			want:     true,
+		},
+		{
+			name:     "multiple string case 1",
+			search:   "/c",
+			inserted: []string{"/a", "/b", "/d"},
+			want:     false,
+		},
 
-func TestTrie_Basic(t *testing.T) {
+		{
+			name:     "multiple string case 2",
+			search:   "",
+			inserted: []string{"/a", "/b", "/d"},
+			want:     false,
+		},
 
-	tree := NewTrie[net.IP]()
-	domains := []string{
-		"example.com",
-		"google.com",
-		"localhost",
+		{
+			name:     "multiple string case 3",
+			search:   "/c",
+			inserted: []string{"/a/c", "/b/c", "/c/d"},
+			want:     true,
+		},
+
+		{
+			name:     "multiple string case 4",
+			search:   "/c/d",
+			inserted: []string{"/a/c/d", "/b/c/d", "/c/d/a"},
+			want:     true,
+		},
+		{
+			name:     "substring string case 1",
+			search:   "/a/b",
+			inserted: []string{"/a"},
+			want:     true,
+		},
+		{
+			name:     "substring string case 2",
+			search:   "/a",
+			inserted: []string{"/a/b"},
+			want:     true,
+		},
+
+		{
+			name:     "substring string case 3",
+			search:   "/a/b",
+			inserted: []string{"/a/b", "/a/b/c"},
+			want:     true,
+		},
+
+		{
+			name:     "substring string case 4",
+			search:   "/c/b",
+			inserted: []string{"/a/b", "/c/b/a"},
+			want:     true,
+		},
+		{
+			name:     "substring string case 5",
+			search:   "/c/a",
+			inserted: []string{"/a/b", "/c/b/a"},
+			want:     false,
+		},
+		{
+			name:     "substring string case 6",
+			search:   "/c/b/c",
+			inserted: []string{"/a/b", "/c/b/a"},
+			want:     false,
+		},
+		{
+			name:     "substring string case 7",
+			search:   "/c/b",
+			inserted: []string{"/a/b", "/c/b/c/a"},
+			want:     true,
+		},
+		{
+			name:     "absolute path case 1",
+			search:   "a",
+			inserted: []string{"/a/b"},
+			want:     false,
+		},
+		{
+			name:     "absolute path case 2",
+			search:   "/a",
+			inserted: []string{"a/b", "a/b/c"},
+			want:     false,
+		},
 	}
 
-	for _, domain := range domains {
-		tree.Insert(domain, localIP)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			trie := NewTrie()
+
+			for _, i := range tc.inserted {
+				trie.Insert(i)
+			}
+			if got := trie.IsOnSameBranch(tc.search); got != tc.want {
+				t.Fatalf("unexpected result: want %v got %v", tc.want, got)
+			}
+		})
 	}
-
-	node := tree.Search("example.com")
-	assert.NotNil(t, node)
-	assert.True(t, node.Data.Equal(localIP))
-	//assert.NotNil(t, tree.Insert("", localIP))
-	assert.Nil(t, tree.Search(""))
-	assert.NotNil(t, tree.Search("localhost"))
-	assert.Nil(t, tree.Search("www.google.com"))
-
-	//t.Log(tree.Search("www.google.com"))
 }
 
-func TestTrie_RemoveBasic(t *testing.T) {
-
-	tree := NewTrie[net.IP]()
-	domains := []string{
-		"example.com",
-		"google.com",
-		"localhost",
-		"www.localhost.com",
+func TestTrieSearch(t *testing.T) {
+	testCases := []struct {
+		name     string
+		search   string
+		inserted []string
+		want     bool
+	}{
+		{
+			name:     "Empty string insertion and search",
+			search:   "",
+			inserted: []string{""},
+			want:     false,
+		},
+		{
+			name:     "Single directory exact match",
+			search:   "/usr/local/bin/",
+			inserted: []string{"/usr/local/bin/"},
+			want:     true,
+		},
+		{
+			name:     "Single directory partial match",
+			search:   "/usr/local/bin/python",
+			inserted: []string{"/usr/local/bin/"},
+			want:     false,
+		},
+		{
+			name:     "Multiple directories exact match",
+			search:   "/usr/local/lib/",
+			inserted: []string{"/usr/local/bin/", "/usr/local/lib/", "/usr/include/"},
+			want:     true,
+		},
+		{
+			name:     "Multiple directories partial match",
+			search:   "/usr/local/lib/python",
+			inserted: []string{"/usr/local/bin/", "/usr/local/lib/", "/usr/include/"},
+			want:     false,
+		},
+		{
+			name:     "Non-existent path",
+			search:   "/non/existent/path",
+			inserted: []string{"/usr/local/bin/", "/usr/local/lib/"},
+			want:     false,
+		},
+		{
+			name:     "Empty search string",
+			search:   "",
+			inserted: []string{"/usr/local/bin/"},
+			want:     false,
+		},
+		{
+			name:     "Subdirectory search",
+			search:   "/usr/local/bin/",
+			inserted: []string{"/usr/local/bin/"},
+			want:     true,
+		},
+		{
+			name:     "Deep directory structure",
+			search:   "/a/b/c/d/e/f/g",
+			inserted: []string{"/a/b/c/d/e/f/g"},
+			want:     true,
+		},
+		{
+			name:     "Long path with special characters",
+			search:   "/home/user/!@#$%^&*()",
+			inserted: []string{"/home/user/!@#$%^&*()"},
+			want:     true,
+		},
 	}
 
-	for _, domain := range domains {
-		tree.Insert(domain, localIP)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			trie := NewTrie()
+			for _, word := range tc.inserted {
+				trie.Insert(word)
+			}
+			if got := trie.Search(tc.search); got != tc.want {
+				t.Fatalf("Search(%q) = %v, want %v", tc.search, got, tc.want)
+			}
+		})
 	}
-	tree.Remove("example.com")
-	tree.Walk(func(depth int, s string, n *Node[net.IP]) {
-		t.Log(depth, s, n)
-	})
-	assert.Nil(t, tree.Search("example.com"))
-	assert.NotNil(t, tree.Search("localhost"))
-	assert.NotNil(t, tree.Search("google.com"))
-
-	tree.Remove("google.com")
-	assert.NotNil(t, tree.Search("localhost"))
-	assert.Nil(t, tree.Search("google.com"))
-	tree.Remove("localhost")
-	assert.Nil(t, tree.Search("localhost"))
-	t.Log(tree.Search("www.google.com"))
 }
 
-func TestTrie_Wildcard(t *testing.T) {
-	tree := NewTrie[net.IP]()
-
-	domains := []string{
-		"*.example.com",
-		"sub.*.example.com",
-		"*.dev",
-		".org",
-		".example.net",
-		".apple.*",
-		"+.foo.com",
-		"+.stun.*.*",
-		"+.stun.*.*.*",
-		"+.stun.*.*.*.*",
-		"stun.l.google.com",
+func TestTrieLongestPrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		inserted []string
+		want     string
+	}{
+		{
+			name:     "Empty trie",
+			inserted: []string{},
+			want:     "",
+		},
+		{
+			name:     "Single directory exact match",
+			inserted: []string{"/usr/local/bin/"},
+			want:     "/usr/local/bin",
+		},
+		{
+			name:     "Single directory partial match",
+			inserted: []string{"/usr/local/bin/", "/usr/local/bin/python"},
+			want:     "/usr/local/bin",
+		},
+		{
+			name:     "Multiple directories with common prefix",
+			inserted: []string{"/usr/local/bin/", "/usr/local/lib/", "/usr/include/", "/usr/local/bin/python"},
+			want:     "/usr",
+		},
+		{
+			name:     "No common prefix",
+			inserted: []string{"/home/user/", "/var/log/", "/tmp/", "/etc/passwd"},
+			want:     "",
+		},
+		{
+			name:     "Reverse path match",
+			inserted: []string{"bin", "lib", "include", "include/lib/bin"},
+			want:     "",
+		},
+		{
+			name:     "Longer input than stored",
+			inserted: []string{"/short/", "/shorter/path"},
+			want:     "",
+		},
+		{
+			name:     "No match",
+			inserted: []string{"/apple/", "/banana/", "/cherry/"},
+			want:     "",
+		},
+		{
+			name:     "Partial reverse match",
+			inserted: []string{"bin", "lib", "include", "lib/bin"},
+			want:     "",
+		},
+		{
+			name: "normal case 1",
+			inserted: []string{
+				"/opt/homebrew/Cellar/cjson/1.7.18/include/cJSON.h",
+				"/opt/homebrew/Cellar/cjson/1.7.18/include/zlib/zlib.h",
+				"/opt/homebrew/Cellar/cjson/1.7.18/include/cJSON/cJSON.h",
+			},
+			want: "/opt/homebrew/Cellar/cjson/1.7.18/include",
+		},
+		{
+			name:     "absolute path case 1",
+			inserted: []string{"/usr", "usr", "/usr/include", "/usr"},
+			want:     "",
+		},
+		{
+			name:     "absolute path case 2",
+			inserted: []string{"usr/share", "/usr", "usr/include", "usr/include/share"},
+			want:     "",
+		},
 	}
 
-	for _, domain := range domains {
-		tree.Insert(domain, localIP)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			trie := NewTrie()
+			for _, word := range tt.inserted {
+				trie.Insert(word)
+			}
+			result := trie.LongestPrefix()
+			if result != tt.want {
+				t.Errorf("LongestPrefix(%q) = %q, want %q", tt.inserted, result, tt.want)
+			}
+		})
 	}
-	tree.Walk(func(depth int, s string, n *Node[net.IP]) {
-		t.Log(depth, s)
-	})
-	assert.NotNil(t, tree.Search("sub.example.com"))
-	assert.NotNil(t, tree.Search("sub.foo.example.com"))
-	assert.NotNil(t, tree.Search("test.org"))
-	assert.NotNil(t, tree.Search("test.example.net"))
-	assert.NotNil(t, tree.Search("test.apple.com"))
-	assert.NotNil(t, tree.Search("test.foo.com"))
-	assert.NotNil(t, tree.Search("foo.com"))
-	assert.NotNil(t, tree.Search("global.stun.website.com"))
-	assert.Nil(t, tree.Search("foo.sub.example.com"))
-	assert.Nil(t, tree.Search("foo.example.dev"))
-	assert.Nil(t, tree.Search("example.com"))
 }
 
-func TestTrie_RemoveWildcard(t *testing.T) {
-	tree := NewTrie[net.IP]()
+func TestTrieReverse(t *testing.T) {
+	testCases := []struct {
+		name     string
+		search   string
+		inserted []string
+		want     bool
+	}{
+		{
+			name:   "empty string",
+			search: "abc",
+			want:   false,
+		},
+		{
+			name:     "input empty string",
+			search:   "",
+			inserted: []string{""},
+			want:     false,
+		},
+		{
+			name:     "one string",
+			search:   "/a",
+			inserted: []string{"/a"},
+			want:     true,
+		},
+		{
+			name:     "two string",
+			search:   "/a",
+			inserted: []string{"/a", "/b"},
+			want:     true,
+		},
+		{
+			name:     "multiple string case 1",
+			search:   "/c",
+			inserted: []string{"/a", "/b", "/d"},
+			want:     false,
+		},
 
-	domains := []string{
-		"*.example.com",
-		"sub.*.example.com",
-		"*.dev",
-		".org",
-		".example.net",
-		".apple.*",
-		"+.foo.com",
-		"+.stun.*.*",
-		"+.stun.*.*.*",
-		"+.stun.*.*.*.*",
-		"stun.google.*.*",
+		{
+			name:     "multiple string case 2",
+			search:   "",
+			inserted: []string{"/a", "/b", "/d"},
+			want:     false,
+		},
+
+		{
+			name:     "multiple string case 3",
+			search:   "/c",
+			inserted: []string{"/a/c", "/b/c", "/c/d"},
+			want:     false,
+		},
+
+		{
+			name:     "multiple string case 4",
+			search:   "c/d",
+			inserted: []string{"/a/c/d", "/b/c/d", "/c/d/a"},
+			want:     true,
+		},
+
+		{
+			name:     "multiple string case 5",
+			search:   "c",
+			inserted: []string{"/a/c", "/b/c", "/c/d"},
+			want:     true,
+		},
+		{
+			name:     "substring string case 1",
+			search:   "/a/b",
+			inserted: []string{"/a"},
+			want:     false,
+		},
+		{
+			name:     "substring string case 2",
+			search:   "b",
+			inserted: []string{"/a/b"},
+			want:     true,
+		},
+
+		{
+			name:     "substring string case 3",
+			search:   "/a/b",
+			inserted: []string{"/a/b", "/a/b/c"},
+			want:     true,
+		},
+
+		{
+			name:   "normal case 1",
+			search: "libxslt/variables.h",
+			inserted: []string{
+				"/Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk/usr/include/libxslt/imports.h",
+				"/Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk/usr/include/libxslt/xsltexports.h",
+				"/Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk/usr/include/libxslt/variables.h",
+			},
+			want: true,
+		},
+
+		{
+			name:   "normal case 2",
+			search: "libxslt/c14n.h",
+			inserted: []string{
+				"/Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk/usr/include/libxslt/imports.h",
+				"/Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk/usr/include/libxslt/xsltexports.h",
+				"/Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk/usr/include/libxslt/variables.h",
+			},
+			want: false,
+		},
+
+		{
+			name:   "normal case 3",
+			search: "libxslt/imports.h",
+			inserted: []string{
+				"/Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk/usr/include/zlib/imports.h",
+				"/Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk/usr/include/libxml2/imports.h",
+
+				"/Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk/usr/include/libxslt/xsltexports.h",
+				"/Library/Developer/CommandLineTools/SDKs/MacOSX14.sdk/usr/include/libxslt/variables.h",
+			},
+			want: false,
+		},
 	}
 
-	for _, domain := range domains {
-		tree.Insert(domain, localIP)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			trie := NewTrie(WithReversePathSegmenter())
+
+			for _, i := range tc.inserted {
+				trie.Insert(i)
+			}
+			if got := trie.IsOnSameBranch(tc.search); got != tc.want {
+				t.Fatalf("unexpected result: want %v got %v", tc.want, got)
+			}
+		})
 	}
-
-	//tree.Print()
-
-	assert.NotNil(t, tree.Search("sub.example.com"))
-	assert.NotNil(t, tree.Search("sub.foo.example.com"))
-	assert.NotNil(t, tree.Search("test.org"))
-	assert.NotNil(t, tree.Search("test.example.net"))
-	assert.NotNil(t, tree.Search("test.apple.com"))
-	assert.NotNil(t, tree.Search("test.foo.com"))
-	assert.NotNil(t, tree.Search("foo.com"))
-	assert.NotNil(t, tree.Search("global.stun.website.com"))
-	assert.Nil(t, tree.Search("foo.sub.example.com"))
-	assert.Nil(t, tree.Search("foo.example.dev"))
-	assert.Nil(t, tree.Search("example.com"))
-
-	tree.Remove("*.example.com")
-	assert.Nil(t, tree.Search("sub.example.com"))
-	assert.Nil(t, tree.Search("sub.foo.example.com"))
-
-	tree.Remove(".org")
-	assert.Nil(t, tree.Search("test.org"))
-
-	tree.Remove(".example.net")
-	assert.Nil(t, tree.Search("test.example.net"))
-
-	tree.Remove(".apple.*")
-	assert.Nil(t, tree.Search("test.apple.com"))
-
-	tree.Remove("+.foo.com")
-
-	assert.Nil(t, tree.Search("test.foo.com"))
-	assert.Nil(t, tree.Search("foo.com"))
-	t.Log("start del stun")
-	tree.Remove("+.stun.*.*.*.*")
-	assert.NotNil(t, tree.Search("global.stun.website.com"))
-	tree.Remove("+.stun.*.*.*")
-	assert.NotNil(t, tree.Search("global.stun.website.com"))
-
-	tree.Remove("+.stun.*.*")
-	assert.Nil(t, tree.Search("global.stun.website.com"))
-	assert.NotNil(t, tree.Search("stun.google.baidu.com"))
-}
-
-func TestTrie_Boundary(t *testing.T) {
-	tree := NewTrie[net.IP]()
-	tree.Insert("*.dev", localIP)
-
-	tree.Insert(".", localIP)
-	tree.Insert("..dev", localIP)
-	assert.Nil(t, tree.Search("dev"))
-}
-
-func TestTrie_RemoveWildcard2(t *testing.T) {
-	tree := NewTrie[net.IP]()
-
-	domains := []string{
-		"+.stun.*.*",
-		"+.stun.*.*.*",
-		"+.stun.*.*.*.*",
-		"stun.l.google.com",
-	}
-
-	for _, domain := range domains {
-		tree.Insert(domain, localIP)
-	}
-
-	tree.Remove("+.stun.*.*.*.*")
-	assert.NotNil(t, tree.Search("global.stun.website.com"))
-
-	tree.Remove("+.stun.*.*.*")
-	assert.NotNil(t, tree.Search("global.stun.website.com"))
-	tree.Print()
-	tree.Remove("+.stun.*.*")
-	tree.Print()
-	assert.Nil(t, tree.Search("global.stun.website.com"))
 }

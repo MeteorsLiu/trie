@@ -1,135 +1,209 @@
 package trie
 
 import (
-	"fmt"
+	"iter"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
-	"sync"
 )
 
-type Trie[T any] struct {
-	sync.RWMutex
-	root *Node[T]
+type Segmenter func(s string) iter.Seq[string]
+
+type TrieNode struct {
+	isLeaf    bool                 // Indicates if this node represents the end of a word
+	linkCount int                  // Number of children nodes
+	children  map[string]*TrieNode // Map of child nodes by segment
 }
 
-func NewTrie[T any]() *Trie[T] {
-	return &Trie[T]{root: NewNodeNil[T](nil)}
+// Creates a new TrieNode with empty children map
+func NewTrieNode() *TrieNode {
+	return &TrieNode{children: make(map[string]*TrieNode)}
 }
 
-func (t *Trie[T]) Insert(k string, value T) {
-	parts := strings.Split(k, ".")
+type Trie struct {
+	root      *TrieNode // Root node of the trie
+	segmenter Segmenter // Function to split strings into segments
+}
+type Options func(*Trie) // Function type for configuring Trie options
 
-	t.Lock()
-	defer t.Unlock()
+func skipEmpty(s []string) []string {
+	for len(s) > 0 && s[0] == "" {
+		s = s[1:]
+	}
+	return s
+}
 
-	if parts[0] == "+" {
-		t.insert(parts[1:], value)
-		parts[0] = ""
-		t.insert(parts, value)
-	} else {
-		t.insert(parts, value)
+func splitPathAbsSafe(path string) (paths []string) {
+	originalPath := filepath.Clean(path)
+
+	sep := string(os.PathSeparator)
+
+	// keep absolute path info
+	if filepath.IsAbs(originalPath) {
+		i := strings.Index(originalPath[1:], sep)
+		if i > 0 {
+			// bound edge: if i is greater than zero, which means there's second separator
+			// for example, /usr/, i: 3, with first separator what we just skipped, i: 4
+			paths = append(paths, originalPath[0:i+1])
+			paths = append(paths, skipEmpty(strings.Split(originalPath[i+1:], sep))...)
+		} else {
+			// start with / but no other / is found, like /usr
+			paths = append(paths, originalPath)
+		}
+	}
+
+	if len(paths) == 0 {
+		paths = skipEmpty(strings.Split(originalPath, sep))
+	}
+
+	return
+}
+
+// Returns an option to configure path segmenter
+// Splits strings by OS path separator and yields each segment
+func WithPathSegmenter() Options {
+	return func(t *Trie) {
+		t.segmenter = func(s string) iter.Seq[string] {
+			return func(yield func(string) bool) {
+				for _, path := range splitPathAbsSafe(s) {
+					if path != "" && !yield(path) {
+						return
+					}
+				}
+			}
+		}
 	}
 }
 
-func (t *Trie[T]) insert(parts []string, value T) {
+// Returns an option to configure reverse path segmenter
+// Splits and reverses strings by OS path separator
+func WithReversePathSegmenter() Options {
+	return func(t *Trie) {
+		t.segmenter = func(s string) iter.Seq[string] {
+			return func(yield func(string) bool) {
+				paths := splitPathAbsSafe(s)
+
+				slices.Reverse(paths)
+
+				for _, path := range paths {
+					if path != "" && !yield(path) {
+						return
+					}
+				}
+			}
+		}
+	}
+}
+
+// Creates a new Trie with default path segmenter
+// Applies all provided options to configure the Trie
+func NewTrie(opts ...Options) *Trie {
+	t := &Trie{root: NewTrieNode()}
+
+	WithPathSegmenter()(t)
+
+	for _, o := range opts {
+		o(t)
+	}
+
+	return t
+}
+
+// Inserts a string into the trie
+// Creates nodes for each segment in the string
+func (t *Trie) Insert(s string) {
+	if s == "" {
+		return
+	}
 	node := t.root
-	for i := len(parts) - 1; i >= 0; i-- {
-		node = node.GetOrSet(parts[i], NewNodeNil[T](node))
-	}
-	node.MarkAsLeaf()
-	node.SetData(value)
-}
 
-func (t *Trie[T]) search(node *Node[T], parts []string) *Node[T] {
-	if len(parts) == 0 {
-		return node
-	}
-
-	if c := node.Get(parts[len(parts)-1]); c != nil {
-		if n := t.search(c, parts[:len(parts)-1]); n != nil && n.IsLeaf() {
-			return n
+	for segment := range t.segmenter(s) {
+		child, ok := node.children[segment]
+		if !ok {
+			child = NewTrieNode()
+			node.children[segment] = child
+			node.linkCount++
 		}
+		node = child
 	}
+	node.isLeaf = true
+}
 
-	if c := node.GetWildcard(); c != nil {
-		if n := t.search(c, parts[:len(parts)-1]); n != nil && n.IsLeaf() {
-			return n
+// Searches for a prefix in the trie
+// Returns the node at the end of the prefix or nil if not found
+func (t *Trie) searchPrefix(s string) *TrieNode {
+	if s == "" {
+		return nil
+	}
+	node := t.root
+
+	for segment := range t.segmenter(s) {
+		child, ok := node.children[segment]
+		if !ok {
+			return nil
 		}
+		node = child
 	}
 
-	return nil
+	return node
 }
 
-func (t *Trie[T]) Search(k string) *Node[T] {
-	parts := strings.Split(k, ".")
+// Finds the longest common prefix of the given string
+// Returns the longest prefix that exists in the trie
+//
+// Implement Source: https://leetcode.com/problems/longest-common-prefix/solutions/127449/longest-common-prefix
+func (t *Trie) LongestPrefix() string {
+	var prefix []string
 
-	t.RLock()
-	n := t.search(t.root, parts)
-	t.RUnlock()
+	dfs(&prefix, "", t.root, nil)
 
-	return n
+	return filepath.Join(prefix...)
 }
 
-func (t *Trie[T]) Remove(k string) {
-	parts := strings.Split(k, ".")
-
-	t.Lock()
-	defer t.Unlock()
-
-	n := t.search(t.root, parts)
-
-	for i := 0; i < len(parts) && n != nil && n.IsLeaf(); i++ {
-		n.Remove(parts[i])
-		if n.parent != nil && len(n.children) < 2 {
-			n.parent.RemoveNode(n)
-		}
-		n = n.parent
-	}
-
-}
-
-// 后序历遍
-func (t *Trie[T]) walk(node *Node[T], depth int, f func(int, string, *Node[T])) {
+func dfs(prefix *[]string, currentPrefix string, node, parent *TrieNode) {
 	if node == nil {
 		return
 	}
-	node.ForEach(func(s string, n *Node[T]) {
-		if !node.IsEmpty() {
-			t.walk(n, depth+1, f)
-		}
-		f(depth, s, n)
-	})
-}
-
-func (t *Trie[T]) Walk(f func(int, string, *Node[T])) {
-	t.walk(t.root, 0, f)
-}
-
-func (t *Trie[T]) print(n *Node[T], key string, space int) {
-	if n == nil {
+	if parent != nil && (parent.linkCount != 1 || parent.isLeaf) {
 		return
 	}
-	space += 10
 
-	n.ForEach(func(s string, nc *Node[T]) {
-		t.print(nc, s, space)
-	})
-
-	for i := 0; i < space; i++ {
-		fmt.Print(" ")
+	if currentPrefix != "" {
+		*prefix = append(*prefix, currentPrefix)
 	}
 
-	if key == "" {
-		if n != t.root {
-			fmt.Printf("+: %v\n", n.Data)
-		} else {
-			fmt.Print("root\n")
-		}
-	} else {
-		fmt.Printf("%s: %v\n", key, n.Data)
+	for current, child := range node.children {
+		dfs(prefix, current, child, node)
 	}
-
 }
 
-func (t *Trie[T]) Print() {
-	t.print(t.root, "", 0)
+// IsOnSameBranch checks the given s is the subset of trie tree
+func (t *Trie) IsOnSameBranch(s string) bool {
+	if s == "" {
+		return false
+	}
+	node := t.root
+
+	for segment := range t.segmenter(s) {
+		child, ok := node.children[segment]
+		if !ok {
+			// if the current node is end, but there's something unmatched, we still consider it valid.
+			// for example,
+			// input: /c/b/a, tree: /c/b, valid
+			// input: /c/b/a, tree: /c/b/c, invalid
+			// input: /c/b, tree: /c/b/c, valid
+			return node.isLeaf
+		}
+		node = child
+	}
+
+	return node != nil
+}
+
+// Checks if the trie contains the exact string
+// Returns true if the string exists in the trie
+func (t *Trie) Search(s string) bool {
+	node := t.searchPrefix(s)
+	return node != nil && node.isLeaf
 }
